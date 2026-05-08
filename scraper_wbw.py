@@ -1,13 +1,9 @@
 import json
-import re
 import cloudscraper
 from io import BytesIO
 from PIL import Image
 from bs4 import BeautifulSoup
 
-# ============================================
-# 🎯 FOCUS LOGIKA
-# ============================================
 def get_focus_y(w, h):
     ratio = round(w / h, 2)
     if ratio >= 1.6: return 0.35
@@ -17,7 +13,6 @@ def get_focus_y(w, h):
 def get_image_info(scraper, url):
     if not url or not url.startswith('http'): return None
     try:
-        # Koristimo cloudscraper i za slike
         res = scraper.get(url, timeout=10)
         img = Image.open(BytesIO(res.content))
         w, h = img.size
@@ -32,7 +27,6 @@ def get_image_info(scraper, url):
 
 def scrape_wbw():
     url = "https://whatboyswant.com/babes/bottomless-babes"
-    # cloudscraper zaobilazi Cloudflare zaštitu
     scraper = cloudscraper.create_scraper()
     
     try:
@@ -40,30 +34,38 @@ def scrape_wbw():
         response = scraper.get(url, timeout=30)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Na WBW-u su artikli obično u .post-item ili .post-thumbnail klasama
-        articles = soup.select('article, .post-item, .entry-content')
+        # WBW koristi 'a' tagove s klasom 'thumb-container' ili slike unutar 'grid-item'
+        # Pokušat ćemo pronaći sve linkove koji vode na pojedinačne galerije/postove
+        items = soup.find_all('a', href=True)
         
         news_items = []
-        for art in articles:
-            link_tag = art.find('a', href=True)
-            img_tag = art.find('img')
-            
-            if not link_tag or not img_tag: continue
+        seen_links = set()
 
-            # Često koriste data-src za lazy loading slika
-            image_url = img_tag.get('data-src') or img_tag.get('src') or ""
-            # Makni nepotrebne parametre iz URL-a slike ako postoje (npr. ?w=100)
-            image_url = image_url.split('?')[0] 
+        for a in items:
+            img = a.find('img')
+            if not img: continue
             
-            title = img_tag.get('alt') or art.get_text(strip=True) or "WBW Content"
-            link = link_tag['href']
-            if not link.startswith('http'):
-                link = "https://whatboyswant.com" + link
+            link = a['href']
+            # Izbjegavamo duplikate i linkove koji nisu postovi
+            if link in seen_links or not link.startswith('https://whatboyswant.com/post/'):
+                continue
+            
+            # Izvlačenje slike - provjeravamo sve moguće izvore (lazy loading)
+            image_url = img.get('data-src') or img.get('src') or img.get('data-lazy-src') or ""
+            
+            # Ako je URL slike relativan, popravi ga
+            if image_url.startswith('//'):
+                image_url = 'https:' + image_url
+            elif image_url.startswith('/') and not image_url.startswith('//'):
+                image_url = 'https://whatboyswant.com' + image_url
 
+            title = img.get('alt') or "WBW Content"
+            
             if image_url and len(news_items) < 15:
+                print(f"🔍 Provjera slike: {image_url[:50]}...")
                 info = get_image_info(scraper, image_url)
                 if info:
-                    print(f"✅ Dodano: {title[:30]}...")
+                    print(f"✅ Dodano: {title[:30]}")
                     news_items.append({
                         "title": title.strip(),
                         "link": link,
@@ -76,10 +78,11 @@ def scrape_wbw():
                         "source_color": "#e91e63",
                         "flag": "🔞"
                     })
+                    seen_links.add(link)
 
         with open('wbw_news.json', 'w', encoding='utf-8') as f:
             json.dump(news_items, f, ensure_ascii=False, indent=4)
-        print(f"✨ Spremljeno {len(news_items)} stavki u wbw_news.json")
+        print(f"✨ Gotovo! Spremljeno {len(news_items)} stavki.")
 
     except Exception as e:
         print(f"❌ Greška: {e}")
