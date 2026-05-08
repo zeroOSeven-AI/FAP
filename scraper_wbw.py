@@ -4,7 +4,6 @@ import json
 import base64
 import time
 
-# Tvoj popis kategorija s linkovima
 CATEGORIES = [
     {"name": "BIKINI", "url": "https://whatboyswant.com/babes/beach-bikini-babes"},
     {"name": "PARTY", "url": "https://whatboyswant.com/babes/party-babes"},
@@ -15,15 +14,22 @@ CATEGORIES = [
 ]
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1'
 }
 
 def get_base64(url):
+    if not url: return None
     try:
+        # Ako je URL slike relativan, dodaj domenu
+        if url.startswith('//'): url = "https:" + url
+        elif not url.startswith('http'): url = "https://whatboyswant.com" + url
+            
         res = requests.get(url, headers=HEADERS, timeout=10)
-        return base64.b64encode(res.content).decode('utf-8')
+        if res.status_code == 200:
+            return base64.b64encode(res.content).decode('utf-8')
     except:
         return None
+    return None
 
 all_data = []
 
@@ -33,39 +39,49 @@ for cat in CATEGORIES:
         response = requests.get(cat['url'], headers=HEADERS, timeout=15)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Pronalazimo prvu (najnoviju) objavu u toj kategoriji
-        # Na WBW su objave obično unutar div-a s klasom 'post-box' ili slično
-        post = soup.select_one('.post-box, article, .item') 
+        # WBW specifična klasa za objavu je obično 'video-block' ili 'post'
+        post = soup.find('div', class_='video-block') or soup.find('div', class_='post')
         
         if post:
             link_tag = post.find('a')
             img_tag = post.find('img')
+            title_tag = post.find('div', class_='post-title') or post.find('span')
             
             if link_tag and img_tag:
+                # 1. Link do objave
                 link = link_tag['href']
                 if not link.startswith('http'):
                     link = "https://whatboyswant.com" + link
                 
-                img_url = img_tag.get('src') or img_tag.get('data-src')
+                # 2. URL slike (gledamo src, data-src ili alt)
+                img_url = img_tag.get('data-src') or img_tag.get('src')
                 
-                # Čišćenje naslova (uzimamo alt tekst slike ili naslov objave)
-                title = img_tag.get('alt', 'Selection').split('|')[0].strip()
-                
+                # 3. Naslov/Ime
+                name = "SELECTION"
+                if title_tag:
+                    name = title_tag.get_text(strip=True)
+                elif img_tag.get('alt'):
+                    name = img_tag.get('alt').split('|')[0].strip()
+
                 all_data.append({
-                    "source_title1": title[:12].upper(), # Ime cure
-                    "source_title2": cat['name'],        # KATEGORIJA za rozi bedž
+                    "source_title1": name[:12].upper(),
+                    "source_title2": cat['name'],
                     "image_b64": get_base64(img_url),
                     "link": link
                 })
+                print(f"✅ Uspješno skupljeno: {cat['name']}")
+        else:
+            print(f"❌ Nisam našao post za: {cat['name']}")
         
-        # Mala pauza da nas ne blokiraju
-        time.sleep(1)
+        time.sleep(1.5) # Malo duža pauza da budemo sigurni
         
     except Exception as e:
         print(f"Greška na {cat['name']}: {e}")
 
-# Spremanje u tvoj glavni JSON file
-with open('wbw_news.json', 'w', encoding='utf-8') as f:
-    json.dump(all_data, f, indent=4, ensure_ascii=False)
-
-print("Gotovo! JSON je spreman.")
+# Provjera prije spremanja
+if all_data:
+    with open('wbw_news.json', 'w', encoding='utf-8') as f:
+        json.dump(all_data, f, indent=4, ensure_ascii=False)
+    print(f"Gotovo! JSON spremljen sa {len(all_data)} stavki.")
+else:
+    print("Kritična greška: Nijedna kategorija nije skupljena!")
