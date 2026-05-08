@@ -1,9 +1,12 @@
-import requests
-from bs4 import BeautifulSoup
 import json
+import cloudscraper
 import base64
+from io import BytesIO
+from PIL import Image
+from bs4 import BeautifulSoup
 import time
 
+# Tvoj popis kategorija
 CATEGORIES = [
     {"name": "BIKINI", "url": "https://whatboyswant.com/babes/beach-bikini-babes"},
     {"name": "PARTY", "url": "https://whatboyswant.com/babes/party-babes"},
@@ -13,75 +16,87 @@ CATEGORIES = [
     {"name": "COSPLAY", "url": "https://whatboyswant.com/babes/cosplay"}
 ]
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1'
-}
-
-def get_base64(url):
+def get_base64_image(scraper, url):
     if not url: return None
     try:
-        # Ako je URL slike relativan, dodaj domenu
-        if url.startswith('//'): url = "https:" + url
-        elif not url.startswith('http'): url = "https://whatboyswant.com" + url
-            
-        res = requests.get(url, headers=HEADERS, timeout=10)
+        if url.startswith('//'): url = 'https:' + url
+        elif url.startswith('/'): url = 'https://whatboyswant.com' + url
+        
+        headers = {"Referer": "https://whatboyswant.com/"}
+        res = scraper.get(url, timeout=15, headers=headers)
         if res.status_code == 200:
-            return base64.b64encode(res.content).decode('utf-8')
-    except:
+            img = Image.open(BytesIO(res.content))
+            img.thumbnail((800, 800)) 
+            buffered = BytesIO()
+            img.convert('RGB').save(buffered, format="JPEG", quality=75)
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+            return f"data:image/jpeg;base64,{img_str}"
+    except Exception as e:
+        print(f"Greška kod kodiranja slike: {e}")
         return None
     return None
 
-all_data = []
-
-for cat in CATEGORIES:
-    print(f"Hvatam kategoriju: {cat['name']}...")
-    try:
-        response = requests.get(cat['url'], headers=HEADERS, timeout=15)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # WBW specifična klasa za objavu je obično 'video-block' ili 'post'
-        post = soup.find('div', class_='video-block') or soup.find('div', class_='post')
-        
-        if post:
-            link_tag = post.find('a')
-            img_tag = post.find('img')
-            title_tag = post.find('div', class_='post-title') or post.find('span')
+def scrape_multi_wbw():
+    # Koristimo CLOUDSCRAPER da prođemo zaštitu
+    scraper = cloudscraper.create_scraper()
+    news_items = []
+    
+    for cat in CATEGORIES:
+        print(f"🚀 Obrađujem kategoriju: {cat['name']}")
+        try:
+            response = scraper.get(cat['url'], timeout=30)
+            soup = BeautifulSoup(response.text, 'html.parser')
             
-            if link_tag and img_tag:
-                # 1. Link do objave
-                link = link_tag['href']
-                if not link.startswith('http'):
-                    link = "https://whatboyswant.com" + link
-                
-                # 2. URL slike (gledamo src, data-src ili alt)
-                img_url = img_tag.get('data-src') or img_tag.get('src')
-                
-                # 3. Naslov/Ime
-                name = "SELECTION"
-                if title_tag:
-                    name = title_tag.get_text(strip=True)
-                elif img_tag.get('alt'):
-                    name = img_tag.get('alt').split('|')[0].strip()
+            # Koristimo tvoju dobitnu formulu za traženje elemenata
+            items = soup.find_all('div', class_='thumb-box') or soup.find_all('a', href=True)
+            
+            found_in_cat = False
+            for item in items:
+                img = item.find('img')
+                if not img: continue
 
-                all_data.append({
-                    "source_title1": name[:12].upper(),
-                    "source_title2": cat['name'],
-                    "image_b64": get_base64(img_url),
-                    "link": link
-                })
-                print(f"✅ Uspješno skupljeno: {cat['name']}")
-        else:
-            print(f"❌ Nisam našao post za: {cat['name']}")
-        
-        time.sleep(1.5) # Malo duža pauza da budemo sigurni
-        
-    except Exception as e:
-        print(f"Greška na {cat['name']}: {e}")
+                # Uzimamo pravu sliku (data-src je ključan)
+                raw_url = img.get('data-src') or img.get('data-lazy-src') or img.get('src') or ""
+                if "logo" in raw_url.lower() or not raw_url or "base64" in raw_url: continue
+                
+                # Forsiramo kvalitetniju verziju
+                image_url = raw_url.replace('-th.', '-norm.')
+                
+                print(f"📸 Skidam sliku iz {cat['name']}...")
+                b64_data = get_base64_image(scraper, image_url)
+                
+                if b64_data:
+                    link = item.get('href') or item.find_parent('a').get('href', '#')
+                    if link.startswith('/'): link = "https://whatboyswant.com" + link
+                    
+                    # Čistimo naslov
+                    raw_title = (img.get('alt') or "Babe").strip()
+                    clean_title = raw_title.split('|')[0].strip()[:15].upper()
 
-# Provjera prije spremanja
-if all_data:
-    with open('wbw_news.json', 'w', encoding='utf-8') as f:
-        json.dump(all_data, f, indent=4, ensure_ascii=False)
-    print(f"Gotovo! JSON spremljen sa {len(all_data)} stavki.")
-else:
-    print("Kritična greška: Nijedna kategorija nije skupljena!")
+                    news_items.append({
+                        "source_title1": clean_title,
+                        "source_title2": cat['name'],
+                        "image_b64": b64_data,
+                        "link": link
+                    })
+                    found_in_cat = True
+                    break # Uzimamo samo PRVU (najnoviju) sliku iz svake kategorije
+            
+            if not found_in_cat:
+                print(f"⚠️ Nije pronađena slika u kategoriji: {cat['name']}")
+            
+            time.sleep(1) # Kratka pauza
+
+        except Exception as e:
+            print(f"❌ Greška na {cat['name']}: {e}")
+
+    # Spremanje rezultata
+    if news_items:
+        with open('wbw_news.json', 'w', encoding='utf-8') as f:
+            json.dump(news_items, f, ensure_ascii=False, indent=4)
+        print(f"✅ Gotovo! Prikupljeno {len(news_items)} kategorija.")
+    else:
+        print("💀 JSON je i dalje prazan. Provjeri jesu li linkovi ispravni.")
+
+if __name__ == "__main__":
+    scrape_multi_wbw()
