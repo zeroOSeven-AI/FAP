@@ -1,97 +1,72 @@
 import json
 import cloudscraper
+import base64
 from io import BytesIO
 from PIL import Image
 from bs4 import BeautifulSoup
-import time
 
-def get_focus_y(w, h):
-    ratio = round(w / h, 2)
-    if ratio >= 1.6: return 0.35
-    if 0.9 <= ratio <= 1.1: return 0.25
-    return 0.5
-
-def get_image_info(scraper, url):
-    if not url or not url.startswith('http'): return None
+def get_base64_image(scraper, url):
     try:
         res = scraper.get(url, timeout=10)
-        img = Image.open(BytesIO(res.content))
-        w, h = img.size
-        return {
-            "url": url,
-            "w": w,
-            "h": h,
-            "focus_y": get_focus_y(w, h)
-        }
+        if res.status_code == 200:
+            img = Image.open(BytesIO(res.content))
+            # Smanjujemo sliku da JSON ne bude ogroman (max 800px širina)
+            img.thumbnail((800, 800))
+            buffered = BytesIO()
+            img.convert('RGB').save(buffered, format="JPEG", quality=70)
+            # Pretvaranje u Base64 string
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+            return f"data:image/jpeg;base64,{img_str}"
     except:
         return None
+    return None
 
 def scrape_wbw():
     url = "https://whatboyswant.com/babes/bottomless-babes"
-    scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
+    scraper = cloudscraper.create_scraper()
     
     try:
-        print(f"🚀 Scraping WBW: {url}")
+        print(f"🚀 Scraping WBW (Base64 mode): {url}")
         response = scraper.get(url, timeout=30)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        all_links = soup.find_all('a', href=True)
-        print(f"📡 Ukupno linkova: {len(all_links)}")
-
+        links = soup.find_all('a', href=True)
         news_items = []
         seen_images = set()
 
-        for a in all_links:
+        for a in links:
             img = a.find('img')
-            if not img: continue
+            if not img or len(news_items) >= 10: continue # Limitiramo na 10 zbog veličine JSON-a
 
             link = a['href']
             if link.startswith('/'): link = "https://whatboyswant.com" + link
 
-            # Izvlačenje slike
-            raw_img_url = (img.get('data-src') or img.get('data-lazy-src') or img.get('src') or "")
-            if not raw_img_url or "base64" in raw_img_url: continue
+            # Uzimamo 'norm' verziju slike
+            raw_url = (img.get('data-src') or img.get('src') or "").replace('-th.', '-norm.')
+            if not raw_url or "base64" in raw_url: continue
+            if raw_url.startswith('//'): raw_url = 'https:' + raw_url
+            elif raw_url.startswith('/'): raw_url = 'https://whatboyswant.com' + raw_url
 
-            # --- TRIK ZA FULL SLIKU ---
-            # Ako slika završava na -th.jpg, pokušavamo dobiti original
-            image_url = raw_img_url.replace('-th.', '.') # Skida thumbnail sufiks
-            if image_url.startswith('//'): image_url = 'https:' + image_url
-            elif image_url.startswith('/'): image_url = 'https://whatboyswant.com' + image_url
+            if raw_url in seen_images: continue
 
-            if image_url in seen_images: continue
-
-            title = img.get('alt') or "Babe Picture"
+            print(f"📥 Kodiram sliku: {raw_url[:40]}...")
+            b64_data = get_base64_image(scraper, raw_url)
             
-            if len(news_items) < 15:
-                # Filtriramo linkove koji vode na galerije (obično imaju broj na kraju)
-                if any(char.isdigit() for char in link):
-                    print(f"🔍 Provjera: {title[:20]}... | Full Image: {image_url[-30:]}")
-                    
-                    info = get_image_info(scraper, image_url)
-                    # Ako "očišćena" slika ne radi, probaj originalnu
-                    if not info:
-                        info = get_image_info(scraper, raw_img_url)
-
-                    if info and info['w'] > 150:
-                        news_items.append({
-                            "title": title.strip(),
-                            "link": link,
-                            "image_url": info["url"],
-                            "w": info["w"],
-                            "h": info["h"],
-                            "focus_y": info["focus_y"],
-                            "source_title1": "WBW",
-                            "source_title2": "BOTTOMLESS",
-                            "source_color": "#e91e63",
-                            "flag": "🔞"
-                        })
-                        seen_images.add(image_url)
-                        time.sleep(0.2)
+            if b64_data:
+                news_items.append({
+                    "title": (img.get('alt') or "Babe Picture").strip(),
+                    "link": link,
+                    "image_b64": b64_data,
+                    "source_title1": "WBW",
+                    "source_title2": "BOTTOMLESS",
+                    "source_color": "#e91e63",
+                    "flag": "🔞"
+                })
+                seen_images.add(raw_url)
 
         with open('wbw_news.json', 'w', encoding='utf-8') as f:
             json.dump(news_items, f, ensure_ascii=False, indent=4)
-        
-        print(f"✨ USPJEH! Prikupljeno: {len(news_items)} stavki.")
+        print(f"✅ JSON spreman sa {len(news_items)} zakodiranih slika.")
 
     except Exception as e:
         print(f"❌ Greška: {e}")
