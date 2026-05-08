@@ -35,7 +35,6 @@ def scrape_wbw():
         response = scraper.get(url, timeout=30)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Tražimo sve linkove koji u sebi imaju IMG tag
         all_links = soup.find_all('a', href=True)
         print(f"📡 Ukupno linkova: {len(all_links)}")
 
@@ -44,59 +43,55 @@ def scrape_wbw():
 
         for a in all_links:
             img = a.find('img')
-            if not img:
-                continue
+            if not img: continue
 
             link = a['href']
-            # Popravi relativne linkove
-            if link.startswith('/'):
-                link = "https://whatboyswant.com" + link
+            if link.startswith('/'): link = "https://whatboyswant.com" + link
 
-            # Izvlačenje slike - hvatamo bilo što što liči na izvor slike
-            image_url = (img.get('data-src') or 
-                         img.get('data-lazy-src') or 
-                         img.get('data-original') or
-                         img.get('src') or "")
+            # Izvlačenje slike
+            raw_img_url = (img.get('data-src') or img.get('data-lazy-src') or img.get('src') or "")
+            if not raw_img_url or "base64" in raw_img_url: continue
 
-            # Preskoči ako nema slike, ako je logo, ili ako smo sliku već vidjeli
-            if not image_url or "logo" in image_url.lower() or "base64" in image_url or image_url in seen_images:
-                continue
-
-            # Popravi URL slike
+            # --- TRIK ZA FULL SLIKU ---
+            # Ako slika završava na -th.jpg, pokušavamo dobiti original
+            image_url = raw_img_url.replace('-th.', '.') # Skida thumbnail sufiks
             if image_url.startswith('//'): image_url = 'https:' + image_url
             elif image_url.startswith('/'): image_url = 'https://whatboyswant.com' + image_url
 
-            # Uzmi naslov iz ALT taga ili naslova linka
-            title = img.get('alt') or a.get('title') or "WBW Content"
-            title = title.strip()
+            if image_url in seen_images: continue
 
-            # Ako je naslov prekratak (npr. samo "image"), probaj naći tekst oko linka
-            if len(title) < 3:
-                title = "Amazing Content"
-
+            title = img.get('alt') or "Babe Picture"
+            
             if len(news_items) < 15:
-                print(f"🔍 Pronađeno: {title[:20]}... | Slika: {image_url[:40]}")
-                info = get_image_info(scraper, image_url)
-                if info and info['w'] > 200: # Preskoči sitne ikone (manje od 200px)
-                    news_items.append({
-                        "title": title,
-                        "link": link,
-                        "image_url": info["url"],
-                        "w": info["w"],
-                        "h": info["h"],
-                        "focus_y": info["focus_y"],
-                        "source_title1": "WBW",
-                        "source_title2": "GALLERY",
-                        "source_color": "#e91e63",
-                        "flag": "🔞"
-                    })
-                    seen_images.add(image_url)
-                    time.sleep(0.3)
+                # Filtriramo linkove koji vode na galerije (obično imaju broj na kraju)
+                if any(char.isdigit() for char in link):
+                    print(f"🔍 Provjera: {title[:20]}... | Full Image: {image_url[-30:]}")
+                    
+                    info = get_image_info(scraper, image_url)
+                    # Ako "očišćena" slika ne radi, probaj originalnu
+                    if not info:
+                        info = get_image_info(scraper, raw_img_url)
+
+                    if info and info['w'] > 150:
+                        news_items.append({
+                            "title": title.strip(),
+                            "link": link,
+                            "image_url": info["url"],
+                            "w": info["w"],
+                            "h": info["h"],
+                            "focus_y": info["focus_y"],
+                            "source_title1": "WBW",
+                            "source_title2": "BOTTOMLESS",
+                            "source_color": "#e91e63",
+                            "flag": "🔞"
+                        })
+                        seen_images.add(image_url)
+                        time.sleep(0.2)
 
         with open('wbw_news.json', 'w', encoding='utf-8') as f:
             json.dump(news_items, f, ensure_ascii=False, indent=4)
         
-        print(f"✨ USPJEH! Spremljeno: {len(news_items)} stavki.")
+        print(f"✨ USPJEH! Prikupljeno: {len(news_items)} stavki.")
 
     except Exception as e:
         print(f"❌ Greška: {e}")
