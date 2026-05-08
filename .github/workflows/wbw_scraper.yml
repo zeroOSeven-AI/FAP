@@ -8,6 +8,10 @@ on:
 jobs:
   scrape_job:
     runs-on: ubuntu-latest
+    # 🔥 OVO JE KLJUČNO ZA POPRAVAK 403 GREŠKE
+    permissions:
+      contents: write
+      
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
@@ -29,6 +33,7 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
+          # Dodajemo file
           git add wbw_news.json
           
           if git diff --staged --quiet; then
