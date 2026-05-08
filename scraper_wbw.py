@@ -28,80 +28,78 @@ def get_image_info(scraper, url):
 
 def scrape_wbw():
     url = "https://whatboyswant.com/babes/bottomless-babes"
-    # Forsiramo browser identitet
     scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
     
     try:
         print(f"🚀 Scraping WBW: {url}")
         response = scraper.get(url, timeout=30)
-        
-        # Debug: Ispisujemo dio HTML-a u logove da vidimo što GitHub vidi
-        print(f"📡 Status Code: {response.status_code}")
-        
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # WBW često drži slike u 'article' tagovima ili 'div' s klasom 'thumb'
-        # Tražimo sve linkove, pa ćemo filtrirati one koji imaju slike unutra
-        links = soup.find_all('a', href=True)
-        print(f"Found {len(links)} links total. Filtering...")
+        # Tražimo sve linkove koji u sebi imaju IMG tag
+        all_links = soup.find_all('a', href=True)
+        print(f"📡 Ukupno linkova: {len(all_links)}")
 
         news_items = []
-        seen_links = set()
+        seen_images = set()
 
-        for a in links:
+        for a in all_links:
             img = a.find('img')
+            if not img:
+                continue
+
             link = a['href']
-            
-            # Ako link nije potpun, spoji ga
+            # Popravi relativne linkove
             if link.startswith('/'):
                 link = "https://whatboyswant.com" + link
 
-            # Filtriramo samo postove/galerije
-            if "/post/" not in link or link in seen_links:
+            # Izvlačenje slike - hvatamo bilo što što liči na izvor slike
+            image_url = (img.get('data-src') or 
+                         img.get('data-lazy-src') or 
+                         img.get('data-original') or
+                         img.get('src') or "")
+
+            # Preskoči ako nema slike, ako je logo, ili ako smo sliku već vidjeli
+            if not image_url or "logo" in image_url.lower() or "base64" in image_url or image_url in seen_images:
                 continue
-            
-            if img:
-                # Izvlačenje slike - redoslijed po važnosti
-                image_url = (img.get('data-src') or 
-                             img.get('data-lazy-src') or 
-                             img.get('src') or 
-                             "")
-                
-                if not image_url or "base64" in image_url: 
-                    continue
 
-                if image_url.startswith('//'): image_url = 'https:' + image_url
-                elif image_url.startswith('/'): image_url = 'https://whatboyswant.com' + image_url
+            # Popravi URL slike
+            if image_url.startswith('//'): image_url = 'https:' + image_url
+            elif image_url.startswith('/'): image_url = 'https://whatboyswant.com' + image_url
 
-                title = img.get('alt') or "WBW Content"
-                
-                if len(news_items) < 15:
-                    print(f"🔍 Obrada: {title[:20]} | Image: {image_url[:40]}")
-                    info = get_image_info(scraper, image_url)
-                    if info:
-                        news_items.append({
-                            "title": title.strip(),
-                            "link": link,
-                            "image_url": info["url"],
-                            "w": info["w"],
-                            "h": info["h"],
-                            "focus_y": info["focus_y"],
-                            "source_title1": "WBW",
-                            "source_title2": "BOTTOMLESS",
-                            "source_color": "#e91e63",
-                            "flag": "🔞"
-                        })
-                        seen_links.add(link)
-                        # Mala pauza da ne budemo preagresivni
-                        time.sleep(0.5)
+            # Uzmi naslov iz ALT taga ili naslova linka
+            title = img.get('alt') or a.get('title') or "WBW Content"
+            title = title.strip()
+
+            # Ako je naslov prekratak (npr. samo "image"), probaj naći tekst oko linka
+            if len(title) < 3:
+                title = "Amazing Content"
+
+            if len(news_items) < 15:
+                print(f"🔍 Pronađeno: {title[:20]}... | Slika: {image_url[:40]}")
+                info = get_image_info(scraper, image_url)
+                if info and info['w'] > 200: # Preskoči sitne ikone (manje od 200px)
+                    news_items.append({
+                        "title": title,
+                        "link": link,
+                        "image_url": info["url"],
+                        "w": info["w"],
+                        "h": info["h"],
+                        "focus_y": info["focus_y"],
+                        "source_title1": "WBW",
+                        "source_title2": "GALLERY",
+                        "source_color": "#e91e63",
+                        "flag": "🔞"
+                    })
+                    seen_images.add(image_url)
+                    time.sleep(0.3)
 
         with open('wbw_news.json', 'w', encoding='utf-8') as f:
             json.dump(news_items, f, ensure_ascii=False, indent=4)
         
-        print(f"✨ Završeno! Prikupljeno: {len(news_items)}")
+        print(f"✨ USPJEH! Spremljeno: {len(news_items)} stavki.")
 
     except Exception as e:
-        print(f"❌ Critical Error: {e}")
+        print(f"❌ Greška: {e}")
 
 if __name__ == "__main__":
     scrape_wbw()
