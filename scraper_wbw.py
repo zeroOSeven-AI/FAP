@@ -65,8 +65,8 @@ def scrape_wbw():
                     "title": (img.get('alt') or "Babe").strip(),
                     "link": link,
                     "image_b64": b64_data,
-                    "source_title1": "WBW",
-                    "source_title2": "BOTTOMLESS",
+                    "source_title1": "BOTTOMLESS",
+                    "source_title2": "BABES",
                     "source_color": "#e91e63",
                     "flag": "🔞"
                 })
