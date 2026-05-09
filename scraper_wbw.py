@@ -94,8 +94,8 @@ def scrape_multi_wbw():
                     
                     # NOVI PRISTUP NAZIVIMA PREMA TVOM ZAHTJEVU
                     news_items.append({
-                        "source_title1": "Babes",
-                        "source_title2": cat['name'].upper(),
+                        "source_title1": cat['name'].upper(),
+                        "source_title2": "BABES",
                         "image_b64": info["b64"],
                         "w": info["w"],
                         "h": info["h"],
