@@ -6,7 +6,6 @@ from PIL import Image
 from bs4 import BeautifulSoup
 import time
 
-# Tvoj popis kategorija
 CATEGORIES = [
     {"name": "BIKINI", "url": "https://whatboyswant.com/babes/beach-bikini-babes"},
     {"name": "PARTY", "url": "https://whatboyswant.com/babes/party-babes"},
@@ -16,21 +15,23 @@ CATEGORIES = [
     {"name": "COSPLAY", "url": "https://whatboyswant.com/babes/cosplay"}
 ]
 
-# ============================================
-# 🎯 FOCUS LOGIKA (Samo izračun, bez rezanja)
-# ============================================
 def get_focus_y(w, h):
-    ratio = round(w / h, 2)
-    # Ako je slika uspravna (portrait), spusti fokus niže (0.40 - 0.45)
-    if ratio < 1.0:
-        return 0.40
-    # Ako je kvadratna
-    if 1.0 <= ratio <= 1.2:
-        return 0.35
-    # Ako je široka (landscape)
-    return 0.50
+    """
+    Logika za dinamički fokus:
+    Što je slika "viša" (manji ratio), to fokus mora ići niže 
+    kako bismo izbjegli samo prazan prostor iznad glave.
+    """
+    ratio = w / h
+    if ratio < 0.8:    # Jako uska i visoka slika
+        return 0.30
+    elif ratio < 1.0:  # Portret
+        return 0.38
+    elif ratio < 1.3:  # Kvadratasta
+        return 0.45
+    else:              # Široka slika
+        return 0.50
 
-def get_image_data(scraper, url):
+def get_image_info(scraper, url):
     if not url: return None
     try:
         if url.startswith('//'): url = 'https:' + url
@@ -38,15 +39,16 @@ def get_image_data(scraper, url):
         
         headers = {"Referer": "https://whatboyswant.com/"}
         res = scraper.get(url, timeout=15, headers=headers)
+        
         if res.status_code == 200:
             img = Image.open(BytesIO(res.content))
             w, h = img.size
             
-            # Izračunaj fokus na temelju originalnih dimenzija
+            # Određujemo fokus prije smanjivanja
             focus_y = get_focus_y(w, h)
             
-            # Smanji samo težinu datoteke za widget
-            img.thumbnail((800, 800)) 
+            # Smanjujemo sliku za widget (da JSON ne bude pretežak)
+            img.thumbnail((600, 600)) 
             buffered = BytesIO()
             img.convert('RGB').save(buffered, format="JPEG", quality=75)
             img_str = base64.b64encode(buffered.getvalue()).decode()
@@ -59,7 +61,6 @@ def get_image_data(scraper, url):
             }
     except Exception as e:
         print(f"Greška kod slike: {e}")
-        return None
     return None
 
 def scrape_multi_wbw():
@@ -67,12 +68,13 @@ def scrape_multi_wbw():
     news_items = []
     
     for cat in CATEGORIES:
-        print(f"🚀 Obrađujem kategoriju: {cat['name']}")
+        print(f"🚀 Obrađujem: {cat['name']}")
         try:
             response = scraper.get(cat['url'], timeout=30)
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            items = soup.find_all('div', class_='thumb-box') or soup.find_all('a', href=True)
+            # Tražimo slike (obično su u thumb-box klasi)
+            items = soup.select('.thumb-box') or soup.find_all('a', href=True)
             
             for item in items:
                 img = item.find('img')
@@ -81,38 +83,35 @@ def scrape_multi_wbw():
                 raw_url = img.get('data-src') or img.get('data-lazy-src') or img.get('src') or ""
                 if "logo" in raw_url.lower() or not raw_url or "base64" in raw_url: continue
                 
+                # Uzimamo normalnu rezoluciju
                 image_url = raw_url.replace('-th.', '-norm.')
                 
-                print(f"📸 Analiziram sliku za {cat['name']}...")
-                img_data = get_image_data(scraper, image_url)
+                info = get_image_info(scraper, image_url)
                 
-                if img_data:
+                if info:
                     link = item.get('href') or item.find_parent('a').get('href', '#')
                     if link.startswith('/'): link = "https://whatboyswant.com" + link
                     
-                    raw_title = (img.get('alt') or "Babe").strip()
-                    clean_title = raw_title.split('|')[0].strip()[:15].upper()
-
+                    # NOVI PRISTUP NAZIVIMA PREMA TVOM ZAHTJEVU
                     news_items.append({
-                        "source_title1": clean_title,
-                        "source_title2": cat['name'],
-                        "image_b64": img_data["b64"],
-                        "w": img_data["w"],
-                        "h": img_data["h"],
-                        "focus_y": img_data["focus_y"], # Ovo ide u JSON
+                        "source_title1": cat['name'].upper(),
+                        "source_title2": "BABES",
+                        "image_b64": info["b64"],
+                        "w": info["w"],
+                        "h": info["h"],
+                        "focus_y": info["focus_y"],
                         "link": link
                     })
-                    break 
+                    break # Uzmi samo prvu najnoviju sliku
             
             time.sleep(1)
-
         except Exception as e:
             print(f"❌ Greška na {cat['name']}: {e}")
 
     if news_items:
         with open('wbw_news.json', 'w', encoding='utf-8') as f:
             json.dump(news_items, f, ensure_ascii=False, indent=4)
-        print(f"✅ Gotovo! JSON sadrži focus_y za svaku sliku.")
+        print(f"✅ JSON spreman s novim fokusima i nazivima!")
 
 if __name__ == "__main__":
     scrape_multi_wbw()
