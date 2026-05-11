@@ -2,7 +2,7 @@ name: Update WBW Content
 
 on:
   schedule:
-    - cron: '*/45 * * * *'
+    - cron: '*/43 * * * *'
   workflow_dispatch:
 
 jobs:
