@@ -13,7 +13,6 @@ one_month_ago = today - timedelta(days=30)
 date_max = today.strftime('%Y-%m-%d')
 date_min = one_month_ago.strftime('%Y-%m-%d')
 
-# URL-ovi za 4 osnovna izvora (ne otvaramo iste stranice dvaput)
 URLS = {
     "LATEST": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without",
     "BEST": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&price=100-100000&trans=without",
@@ -53,7 +52,6 @@ def get_image_info(scraper, url):
     return None
 
 def fetch_albums_from_url(scraper, url):
-    """Izvlači sve albume s jednog URL-a kao listu linkova i slika"""
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
         response = scraper.get(url, timeout=30, headers=headers)
@@ -67,7 +65,8 @@ def fetch_albums_from_url(scraper, url):
                 if img:
                     album_url = "https://www.amateri.com" + href if href.startswith('/') else href
                     raw_img = img.get('data-src') or img.get('data-lazy-src') or img.get('src') or ""
-                    if raw_img and not any(x in raw_img.lower() for x in ["logo", "avatar", "base64"]):
+                    # Ovdje smo olabavili filtere da lakše uhvati sliku, ali i dalje mičemo prazne avatare
+                    if raw_img and not any(x in raw_img.lower() for x in ["logo", "default-avatar"]):
                         album_items.append({"link": album_url, "img_url": raw_img})
         return album_items
     except Exception as e:
@@ -76,10 +75,9 @@ def fetch_albums_from_url(scraper, url):
 
 def scrape_amateri():
     scraper = cloudscraper.create_scraper()
-    final_widgets = [None] * 6 # Pripremamo točno 6 mjesta za bento widget
+    final_widgets = [None] * 6 
     used_links = set()
     
-    # 1. KORAK: Skinimo sve albume za svaku od glavnih stranica
     print("⏳ Skupljam albume s Amatera...")
     latest_list = fetch_albums_from_url(scraper, URLS["LATEST"])
     time.sleep(1)
@@ -89,10 +87,11 @@ def scrape_amateri():
     time.sleep(1)
     random_list = fetch_albums_from_url(scraper, URLS["RANDOM"])
     
-    # Pomoćna funkcija da izvučemo unikatni album sa specifičnog popisa
-    def pop_unique_album(album_list):
+    # Funkcija koja će rovati po listi dok god ne nađe 100% ispravan i nov album
+    def pop_unique_album(album_list, debug_name):
         for item in album_list:
             if item["link"] not in used_links:
+                print(f"   🔎 Pokušavam povući sliku za {debug_name}: {item['link']}")
                 info = get_image_info(scraper, item["img_url"])
                 if info:
                     used_links.add(item["link"])
@@ -100,44 +99,39 @@ def scrape_amateri():
                         "image_b64": info["b64"], "w": info["w"], "h": info["h"],
                         "focus_y": info["focus_y"], "link": item["link"]
                     }
+                else:
+                    print(f"   ⚠ Slika nije prošla, idem na sljedeći na listi...")
         return None
 
-    # 2. KORAK: Punimo polja točno redom kako si tražio
+    # Punjenje svih 6 polja redom
     
-    # Polje 1: LATEST (Prvi album)
     print("📦 Pakiram Polje 1: LATEST")
-    res = pop_unique_album(latest_list)
+    res = pop_unique_album(latest_list, "LATEST")
     if res: final_widgets[0] = {**res, "source_title1": "LATEST", "source_title2": "AMATERI"}
     
-    # Polje 2: BEST (Prvi album)
     print("📦 Pakiram Polje 2: BEST")
-    res = pop_unique_album(best_list)
+    res = pop_unique_album(best_list, "BEST")
     if res: final_widgets[1] = {**res, "source_title1": "BEST", "source_title2": "AMATERI"}
     
-    # Polje 3: MOST COMMENTS
     print("📦 Pakiram Polje 3: MOST COMMENTS")
-    res = pop_unique_album(comments_list)
+    res = pop_unique_album(comments_list, "MOST COMMENTS")
     if res: final_widgets[2] = {**res, "source_title1": "MOST COMMENTS", "source_title2": "AMATERI"}
     
-    # Polje 4: RANDOM
     print("📦 Pakiram Polje 4: RANDOM")
-    res = pop_unique_album(random_list)
+    res = pop_unique_album(random_list, "RANDOM")
     if res: final_widgets[3] = {**res, "source_title1": "RANDOM", "source_title2": "AMATERI"}
     
-    # Polje 5: LATEST NEXT (Sljedeći slobodan iz LATEST liste)
     print("📦 Pakiram Polje 5: LATEST NEXT")
-    res = pop_unique_album(latest_list)
+    res = pop_unique_album(latest_list, "LATEST NEXT")
     if res: final_widgets[4] = {**res, "source_title1": "LATEST NEXT", "source_title2": "AMATERI"}
     
-    # Polje 6: BEST NEXT (Sljedeći slobodan iz BEST liste)
     print("📦 Pakiram Polje 6: BEST NEXT")
-    res = pop_unique_album(best_list)
+    res = pop_unique_album(best_list, "BEST NEXT")
     if res: final_widgets[5] = {**res, "source_title1": "BEST NEXT", "source_title2": "AMATERI"}
 
-    # Filtriraj ako je neko polje ostalo None (za svaki slučaj, iako neće)
+    # Čišćenje praznih mjesta ako ih ima
     news_items = [x for x in final_widgets if x is not None]
 
-    # Spremanje u JSON
     with open('amateri_news.json', 'w', encoding='utf-8') as f:
         json.dump(news_items, f, ensure_ascii=False, indent=4)
     print(f"\n✅ JSON uspješno spremljen! Ukupno stavki: {len(news_items)}/6")
