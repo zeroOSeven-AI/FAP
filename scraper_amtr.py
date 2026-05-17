@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 import time
 from datetime import datetime, timedelta
 
-# Dinamičko računanje datuma (zadnjih mjesec dana)
+# Dinamičko računanje datuma (samo za LATEST i MOST COMMENTS)
 today = datetime.now()
 one_month_ago = today - timedelta(days=30)
 
@@ -21,7 +21,7 @@ CATEGORIES = [
     },
     {
         "name": "BEST", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+        "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&price=100-100000&trans=without"
     },
     {
         "name": "MOST COMMENTS", 
@@ -29,7 +29,7 @@ CATEGORIES = [
     },
     {
         "name": "RANDOM", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=rand&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+        "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=rand&category%5B0%5D=2&gender%5B0%5D=1&price=100-100000&trans=without"
     },
     {
         "name": "LATEST NEXT", 
@@ -37,7 +37,7 @@ CATEGORIES = [
     },
     {
         "name": "BEST NEXT", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+        "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&price=100-100000&trans=without"
     }
 ]
 
@@ -83,7 +83,7 @@ def get_image_info(scraper, url):
 def scrape_amateri():
     scraper = cloudscraper.create_scraper()
     news_items = []
-    used_links = set()  # Globalno praćenje duplikata
+    used_links = set()
     
     for cat in CATEGORIES:
         print(f"🚀 Obrađujem Amateri albume: {cat['name']}")
@@ -112,13 +112,12 @@ def scrape_amateri():
 
             success = False
             
-            # PROLAZIMO KROZ SVE ALBUME DOK NE NAĐEMO JEDAN KOJI NIJE ISKORIŠTEN
             for box_link, img in album_items:
                 album_url = box_link.get('href')
                 if album_url.startswith('/'): 
                     album_url = "https://www.amateri.com" + album_url
                 
-                # POPRAVAK: Ako je album već iskorišten, samo "continue" na sljedeći u listi, ne prekidaj petlju!
+                # Preskoči ako je već ubačen u neko od prethodnih polja
                 if album_url in used_links:
                     continue
                 
@@ -143,7 +142,7 @@ def scrape_amateri():
                     })
                     print(f"   ✅ Uhvaćen album za [{cat['name']}]: {album_url}")
                     success = True
-                    break  # Tek kad uspješno zapišemo novi unikatni album, prekidamo i idemo na iduću kategoriju
+                    break 
             
             if not success:
                 print(f"   ⚠ Nije pronađen slobodan unikatni album za {cat['name']}.")
