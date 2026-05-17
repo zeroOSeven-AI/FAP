@@ -7,38 +7,22 @@ from bs4 import BeautifulSoup
 import time
 from datetime import datetime, timedelta
 
-# Dinamičko računanje datuma (samo za LATEST i MOST COMMENTS)
+# Dinamičko računanje datuma (za LATEST i MOST COMMENTS)
 today = datetime.now()
 one_month_ago = today - timedelta(days=30)
 
 date_max = today.strftime('%Y-%m-%d')
 date_min = one_month_ago.strftime('%Y-%m-%d')
 
+# Vratili smo čiste URL-ove bez skakanja na page=2, kod će sve odraditi sam
 CATEGORIES = [
-    {
-        "name": "LATEST", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
-    },
-    {
-        "name": "BEST", 
-        "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&price=100-100000&trans=without"
-    },
-    {
-        "name": "MOST COMMENTS", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=comments&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
-    },
-    {
-        "name": "RANDOM", 
-        "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=rand&category%5B0%5D=2&gender%5B0%5D=1&price=100-100000&trans=without"
-    },
-    {
-        "name": "LATEST NEXT", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
-    },
-    {
-        "name": "BEST NEXT", 
-        "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&price=100-100000&trans=without"
-    }
+    {"name": "LATEST", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"},
+    {"name": "BEST", "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&price=100-100000&trans=without"},
+    {"name": "MOST COMMENTS", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=comments&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"},
+    {"name": "RANDOM", "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=rand&category%5B0%5D=2&gender%5B0%5D=1&price=100-100000&trans=without"},
+    # Za ove dvije kategorije niže ćemo u kodu reći: "preskoči prvi i uzmi sljedeći"
+    {"name": "LATEST NEXT", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"},
+    {"name": "BEST NEXT", "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&price=100-100000&trans=without"}
 ]
 
 def get_focus_y(w, h):
@@ -111,13 +95,14 @@ def scrape_amateri():
                         album_items.append((parent_a, img))
 
             success = False
+            valid_albums_found = 0  # Brojač koji nam govori koji po redu ispravan album gledamo
             
             for box_link, img in album_items:
                 album_url = box_link.get('href')
                 if album_url.startswith('/'): 
                     album_url = "https://www.amateri.com" + album_url
                 
-                # Preskoči ako je već ubačen u neko od prethodnih polja
+                # Globalni duplikat (da se ne ponavlja s ostalim kategorijama)
                 if album_url in used_links:
                     continue
                 
@@ -129,6 +114,14 @@ def scrape_amateri():
                 info = get_image_info(scraper, image_url)
                 
                 if info:
+                    valid_albums_found += 1
+                    
+                    # LOGIKA ZA "NEXT": Ako kategorija sadrži riječ "NEXT", preskoči prvi nađeni album
+                    if "NEXT" in cat['name'] and valid_albums_found == 1:
+                        print(f"   ⏭ Preskačem prvi album ({album_url}) i tražim sljedeći...")
+                        continue
+                    
+                    # Ako je sve u redu (ili smo na običnoj kategoriji, ili smo na idućem albumu za NEXT)
                     used_links.add(album_url)
                     
                     news_items.append({
