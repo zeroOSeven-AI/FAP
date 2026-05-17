@@ -7,14 +7,14 @@ from bs4 import BeautifulSoup
 import time
 from datetime import datetime, timedelta
 
-# Dinamičko računanje datuma (zadnjih mjesec dana)
+# 1. DINAMIČKO RAČUNANJE DATUMA (Zadnjih mjesec dana od trenutka pokretanja)
 today = datetime.now()
 one_month_ago = today - timedelta(days=30)
 
 date_max = today.strftime('%Y-%m-%d')
 date_min = one_month_ago.strftime('%Y-%m-%d')
 
-# URL-ovi posloženi točno prema tvom zadnjem provjerenom primjeru + filter za žene
+# 2. TOČNI URL-OVI PREMA TVOM ZADNJEM ZAHVJEVU (Solo žene, s cijenom, bez trans)
 CATEGORIES = [
     {
         "name": "LATEST", 
@@ -35,17 +35,23 @@ CATEGORIES = [
 ]
 
 def get_focus_y(w, h):
+    """
+    Računanje idealne točke fokusa ovisno o omjeru stranica slike.
+    """
     ratio = w / h
-    if ratio < 0.8:
+    if ratio < 0.8:    # Jako visoka (portret)
         return 0.30
-    elif ratio < 1.0:
+    elif ratio < 1.0:  # Blagi portret
         return 0.38
-    elif ratio < 1.3:
+    elif ratio < 1.3:  # Kvadrat
         return 0.45
-    else:
+    else:              # Široka (landscape)
         return 0.50
 
 def get_image_info(scraper, url):
+    """
+    Preuzima sliku, računa dimenzije i fokus, smanjuje je i pretvara u Base64 string.
+    """
     if not url: return None
     try:
         if url.startswith('//'): url = 'https:' + url
@@ -63,6 +69,7 @@ def get_image_info(scraper, url):
             
             focus_y = get_focus_y(w, h)
             
+            # Smanjivanje radi lakšeg widgeta
             img.thumbnail((600, 600)) 
             buffered = BytesIO()
             img.convert('RGB').save(buffered, format="JPEG", quality=75)
@@ -75,15 +82,18 @@ def get_image_info(scraper, url):
                 "focus_y": focus_y
             }
     except Exception as e:
-        print(f"Greška kod slike: {e}")
+        print(f"   Greška kod obrade slike: {e}")
     return None
 
 def scrape_amateri():
+    """
+    Glavna funkcija koja prolazi kroz kategorije i skuplja najnovije albume.
+    """
     scraper = cloudscraper.create_scraper()
     news_items = []
     
     for cat in CATEGORIES:
-        print(f"🚀 Obrađujem Amateri albume: {cat['name']}")
+        print(f"🚀 Obrađujem Amateri kategoriju: {cat['name']}")
         try:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -91,31 +101,31 @@ def scrape_amateri():
             response = scraper.get(cat['url'], timeout=30, headers=headers)
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # NOVI PRISTUP: Tražimo direktno sve 'a' linkove koji u hrefu imaju '/album/' i sadrže sliku
+            # IMUNI PRISTUP: Tražimo sve linkove koji u hrefu imaju '/album/' i sadrže img tag
             all_links = soup.find_all('a', href=True)
             album_items = []
             
             for link in all_links:
                 href = link.get('href', '')
-                # Filtriramo samo stvarne linkove na albume, preskačemo profile i statičke rute
+                # Filtriramo samo linkove na same albume, mičemo statičke rute
                 if '/album/' in href and not any(x in href for x in ['/albums', 'upload', 'search']):
                     img = link.find('img')
                     if img:
                         album_items.append((link, img))
 
-            # Ako nismo našli unutar linka, probaj naći slike koje imaju 'data-src' a roditelj im je album link
+            # Ako su slike strukturirane izvan samog 'a' taga, radimo brzi fallback
             if not album_items:
                 for img in soup.find_all('img'):
                     parent_a = img.find_parent('a', href=True)
                     if parent_a and '/album/' in parent_a.get('href', ''):
                         album_items.append((parent_a, img))
 
-            # Idemo kroz pronađene albume i uzimamo prvi ispravan
+            # Prolazimo kroz sakupljene albume dok ne nađemo prvi valjani
             success = False
             for box_link, img in album_items:
                 raw_url = img.get('data-src') or img.get('data-lazy-src') or img.get('src') or ""
                 
-                # Preskači logo, avatare i ikone
+                # Preskačemo logotipe, sistemsko smeće i avatare
                 if "logo" in raw_url.lower() or "avatar" in raw_url.lower() or not raw_url or "base64" in raw_url: 
                     continue
                 
@@ -138,21 +148,24 @@ def scrape_amateri():
                     })
                     print(f"   ✅ Uspješno uhvaćen album: {album_url}")
                     success = True
-                    break # Uzmi samo prvi (najnoviji) album iz ove kategorije
+                    break  # Čim uzme prvu najnoviju, ide na iduću kategoriju
             
             if not success:
-                print(f"   ⚠ Nije pronađen valjan album za kategoriju {cat['name']}.")
+                print(f"   ⚠ Nije pronađen valjan album na ovoj stranici.")
             
+            # Pauza između requestova da nas Cloudflare ne blokira
             time.sleep(2)
+            
         except Exception as e:
-            print(f"❌ Greška na {cat['name']}: {e}")
+            print(f"❌ Greška na kategoriji {cat['name']}: {e}")
 
+    # Spremanje u datoteku
     if news_items:
         with open('amateri_news.json', 'w', encoding='utf-8') as f:
             json.dump(news_items, f, ensure_ascii=False, indent=4)
-        print(f"\n✅ JSON uspješno spremljen u amateri_news.json! Ukupno stavki: {len(news_items)}")
+        print(f"\n✅ SVE GOTOVO! amateri_news.json je spreman. (Ukupno stavki: {len(news_items)})")
     else:
-        print("\n❌ Skraper nije uspio izvući podatke. Provjeri strukturu ručno.")
+        print("\n❌ Skraper je završio rad, ali JSON je prazan. Provjeri HTML odziv.")
 
 if __name__ == "__main__":
     scrape_amateri()
