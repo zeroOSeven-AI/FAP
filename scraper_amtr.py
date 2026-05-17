@@ -14,14 +14,32 @@ one_month_ago = today - timedelta(days=30)
 date_max = today.strftime('%Y-%m-%d')
 date_min = one_month_ago.strftime('%Y-%m-%d')
 
-# 2. PROŠIRENO NA 6 KATEGORIJA ZA 2x3 MREŽU
+# 2. POPRAVLJENE KATEGORIJE: 4x Solo Žene + 2x Parovi Žene (gender=5)
 CATEGORIES = [
-    {"name": "LATEST", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"},
-    {"name": "BEST", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"},
-    {"name": "MOST COMMENTS", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=comments&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"},
-    {"name": "MOST VIEWED", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=views&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"},
-    {"name": "TOP RATED", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=rating&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"},
-    {"name": "RANDOM", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=rand&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"}
+    {
+        "name": "LATEST", 
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+    },
+    {
+        "name": "BEST", 
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+    },
+    {
+        "name": "MOST COMMENTS", 
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=comments&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+    },
+    {
+        "name": "RANDOM", 
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=rand&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+    },
+    {
+        "name": "GIRL PAIRS LATEST", 
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=5&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+    },
+    {
+        "name": "GIRL PAIRS BEST", 
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=5&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+    }
 ]
 
 def get_focus_y(w, h):
@@ -107,7 +125,7 @@ def scrape_amateri():
                 if "logo" in raw_url.lower() or "avatar" in raw_url.lower() or not raw_url or "base64" in raw_url: 
                     continue
                 
-                # Pretvaranje u HD sliku
+                # Pretvaranje u čistu HD sliku
                 image_url = raw_url.replace('/thumbs/', '/images/').replace('_t.', '.')
                 info = get_image_info(scraper, image_url)
                 
@@ -139,7 +157,7 @@ def scrape_amateri():
     if news_items:
         with open('amateri_news.json', 'w', encoding='utf-8') as f:
             json.dump(news_items, f, ensure_ascii=False, indent=4)
-        print(f"\n✅ SVE GOTOVO! 6 jedinstvenih HD slika spremljeno u amateri_news.json.")
+        print(f"\n✅ SVE GOTOVO! 6 jedinstvenih HD slika (solo + parovi) spremljeno u amateri_news.json.")
 
 if __name__ == "__main__":
     scrape_amateri()
