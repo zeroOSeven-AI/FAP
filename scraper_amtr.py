@@ -16,30 +16,12 @@ date_min = one_month_ago.strftime('%Y-%m-%d')
 
 # 2. POPRAVLJENE KATEGORIJE: 4x Solo Žene + 2x Parovi Žene (gender=5)
 CATEGORIES = [
-    {
-        "name": "LATEST", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
-    },
-    {
-        "name": "BEST", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
-    },
-    {
-        "name": "MOST COMMENTS", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=comments&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
-    },
-    {
-        "name": "RANDOM", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=rand&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
-    },
-    {
-        "name": "GIRL PAIRS LATEST", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=5&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
-    },
-    {
-        "name": "GIRL PAIRS BEST", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=5&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
-    }
+    {"name": "LATEST", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"},
+    {"name": "BEST", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"},
+    {"name": "MOST COMMENTS", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=comments&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"},
+    {"name": "RANDOM", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=rand&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"},
+    {"name": "GIRL PAIRS LATEST", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=5&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"},
+    {"name": "GIRL PAIRS BEST", "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=5&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"}
 ]
 
 def get_focus_y(w, h):
@@ -95,7 +77,8 @@ def scrape_amateri():
             response = scraper.get(cat['url'], timeout=30, headers=headers)
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            for featured in soup.select('.featured, .promoted, .premium-top, .sponsored'):
+            # Blaži i precizniji odabir sponzoriranih elemenata (da ne skršimo cijeli HTML)
+            for featured in soup.select('div.featured, div.promoted, div.premium-top'):
                 featured.decompose()
             
             all_links = soup.find_all('a', href=True)
@@ -104,7 +87,8 @@ def scrape_amateri():
             for link in all_links:
                 href = link.get('href', '')
                 if '/album/' in href and not any(x in href for x in ['/albums', 'upload', 'search']):
-                    parent_classes = "".join(link.replace_with if not hasattr(link, 'parents') else [p.get('class', '') for p in link.parents if p.get('class')])
+                    # Zaštita od roditeljskih sponzor klasa
+                    parent_classes = "".join([p.get('class', '') for p in link.parents if p.get('class')]) if hasattr(link, 'parents') else ""
                     if any(x in str(parent_classes).lower() for x in ['featured', 'promoted', 'sponsor']):
                         continue
                         
@@ -125,7 +109,7 @@ def scrape_amateri():
                 if "logo" in raw_url.lower() or "avatar" in raw_url.lower() or not raw_url or "base64" in raw_url: 
                     continue
                 
-                # Pretvaranje u čistu HD sliku
+                # HD konverzija
                 image_url = raw_url.replace('/thumbs/', '/images/').replace('_t.', '.')
                 info = get_image_info(scraper, image_url)
                 
@@ -154,10 +138,10 @@ def scrape_amateri():
         except Exception as e:
             print(f"❌ Greška na kategoriji {cat['name']}: {e}")
 
-    if news_items:
-        with open('amateri_news.json', 'w', encoding='utf-8') as f:
-            json.dump(news_items, f, ensure_ascii=False, indent=4)
-        print(f"\n✅ SVE GOTOVO! 6 jedinstvenih HD slika (solo + parovi) spremljeno u amateri_news.json.")
+    # 🔥 SIGURNOSNI POPRAVAK ZA ACTIONS: Datoteka se UVIJEK kreira
+    with open('amateri_news.json', 'w', encoding='utf-8') as f:
+        json.dump(news_items, f, ensure_ascii=False, indent=4)
+    print(f"\n✅ Datoteka amateri_news.json je uspješno generirana s ukupno {len(news_items)} stavki.")
 
 if __name__ == "__main__":
     scrape_amateri()
