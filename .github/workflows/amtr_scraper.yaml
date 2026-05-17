@@ -1,0 +1,54 @@
+name: Update Amateri Content
+
+on:
+  schedule:
+    - cron: '*/53 * * * *'
+  workflow_dispatch:
+
+jobs:
+  scrape_job:
+    runs-on: ubuntu-latest
+    # 🔥 Ključno za dopuštenje pisanja (push) natrag u repo
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install beautifulsoup4 Pillow requests cloudscraper
+
+      - name: Run Amateri Scraper
+        run: python scraper_amtr.py
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Dodajemo generirani JSON datoteku iz novog skripta
+          git add amateri_news.json
+          
+          if git diff --staged --quiet; then
+            echo "Nema novih Amateri slika."
+            exit 0
+          fi
+
+          git commit -m "Automated Amateri update: New content" || exit 0
+          
+          for i in {1..3}; do
+            git pull origin main --rebase
+            if git push origin main; then
+              echo "Uspješan push!"
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
