@@ -5,27 +5,44 @@ from io import BytesIO
 from PIL import Image
 from bs4 import BeautifulSoup
 import time
+from datetime import datetime, timedelta
 
+# Dinamičko računanje datuma (zadnjih mjesec dana)
+today = datetime.now()
+one_month_ago = today - timedelta(days=30)
+
+date_max = today.strftime('%Y-%m-%d')
+date_min = one_month_ago.strftime('%Y-%m-%d')
+
+# URL-ovi posloženi točno prema tvom zadnjem primjeru + filter za žene
 CATEGORIES = [
-    {"name": "LATEST", "url": "https://www.amateri.com/en/albums/?sort=time&category%5B0%5D=2&trans=exclude&gender=female"},
-    {"name": "BEST", "url": "https://www.amateri.com/en/albums/?sort=standard&category%5B0%5D=2&trans=exclude&gender=female"},
-    {"name": "MOST COMMENTS", "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=comments&category%5B0%5D=2&trans=exclude&gender=female"},
-    {"name": "RANDOM", "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&category%5B0%5D=2&sort=rand&trans=exclude&gender=female"}
+    {
+        "name": "LATEST", 
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+    },
+    {
+        "name": "BEST", 
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+    },
+    {
+        "name": "MOST COMMENTS", 
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=comments&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+    },
+    {
+        "name": "RANDOM", 
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=rand&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+    }
 ]
 
 def get_focus_y(w, h):
-    """
-    Logika za dinamički fokus:
-    Što je slika "viša" (manji ratio), to fokus mora ići niže.
-    """
     ratio = w / h
-    if ratio < 0.8:    # Jako uska i visoka slika
+    if ratio < 0.8:
         return 0.30
-    elif ratio < 1.0:  # Portret
+    elif ratio < 1.0:
         return 0.38
-    elif ratio < 1.3:  # Kvadratasta
+    elif ratio < 1.3:
         return 0.45
-    else:              # Široka slika
+    else:
         return 0.50
 
 def get_image_info(scraper, url):
@@ -46,7 +63,6 @@ def get_image_info(scraper, url):
             
             focus_y = get_focus_y(w, h)
             
-            # Smanjujemo sliku za widget (da JSON ne bude pretežak)
             img.thumbnail((600, 600)) 
             buffered = BytesIO()
             img.convert('RGB').save(buffered, format="JPEG", quality=75)
@@ -63,12 +79,11 @@ def get_image_info(scraper, url):
     return None
 
 def scrape_amateri():
-    # Cloudscraper je nužan jer Amateri često koriste Cloudflare zaštitu
     scraper = cloudscraper.create_scraper()
     news_items = []
     
     for cat in CATEGORIES:
-        print(f"🚀 Obrađujem: {cat['name']}")
+        print(f"🚀 Obrađujem Amateri albume: {cat['name']}")
         try:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -76,29 +91,24 @@ def scrape_amateri():
             response = scraper.get(cat['url'], timeout=30, headers=headers)
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Fleksibilni selektori za albume/sličice na amateri.com
-            items = soup.select('.album-item, .thumb-box, .album, .picture-box')
+            # Selektori za elemente albuma na stranici
+            items = soup.select('.album-item, .album, .picture-box, .thumb-box')
             
-            # Fallback ako specifične klase ne vrate ništa
             if not items:
-                items = [a for a in soup.find_all('a', href=True) if a.find('img')]
+                items = [a for a in soup.find_all('a', href=True) if '/album/' in a.get('href', '') and a.find('img')]
             
             for item in items:
                 img = item.find('img') if hasattr(item, 'find') else None
                 if not img: continue
 
-                # Hvatanje URL-a slike (lazy load zaštita)
                 raw_url = img.get('data-src') or img.get('data-lazy-src') or img.get('src') or ""
                 if "logo" in raw_url.lower() or not raw_url or "base64" in raw_url: continue
                 
-                # Ovdje smo maknuli .replace('-th.', '-norm.') jer Amateri imaju drugačiju strukturu URL-ova.
-                # Ako primijetiš da dohvaća premale sličice, ovdje ćemo ubaciti zamjenu (npr. /thumbs/ u /images/).
                 image_url = raw_url
-                
                 info = get_image_info(scraper, image_url)
                 
                 if info:
-                    link = item.get('href') or item.find_parent('a').get('href', '#')
+                    link = item.get('href') if item.name == 'a' else (item.find_parent('a').get('href', '#') if item.find_parent('a') else '#')
                     if link.startswith('/'): link = "https://www.amateri.com" + link
                     
                     news_items.append({
@@ -110,16 +120,18 @@ def scrape_amateri():
                         "focus_y": info["focus_y"],
                         "link": link
                     })
-                    break # Uzmi samo prvu najnoviju sliku iz ove kategorije kao i prije
+                    break # Uzmi samo prvu sliku/album iz ove kategorije
             
-            time.sleep(1.5) # Malo veći delay zbog Cloudflare-a
+            time.sleep(2)
         except Exception as e:
             print(f"❌ Greška na {cat['name']}: {e}")
 
     if news_items:
         with open('amateri_news.json', 'w', encoding='utf-8') as f:
             json.dump(news_items, f, ensure_ascii=False, indent=4)
-        print(f"✅ JSON spreman s novim podacima sa stranice Amateri!")
+        print(f"✅ JSON uspješno spremljen u amateri_news.json!")
+    else:
+        print("⚠ Skraper nije uspio pronaći niti jedan album s ovim filterima.")
 
 if __name__ == "__main__":
     scrape_amateri()
