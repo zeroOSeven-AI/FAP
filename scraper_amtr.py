@@ -7,51 +7,53 @@ from bs4 import BeautifulSoup
 import time
 from datetime import datetime, timedelta
 
-# Dinamičko računanje datuma (zadnjih mjesec dana)
+# Dinamičko računanje datuma (zadnjih mjesec dana za svježe albume)
 today = datetime.now()
 one_month_ago = today - timedelta(days=30)
 
 date_max = today.strftime('%Y-%m-%d')
 date_min = one_month_ago.strftime('%Y-%m-%d')
 
-# TOČNO TVOJA LISTA + DODANE DVIJE KATEGORIJE ZA ŽENSKE PAROVE (gender=5)
+# Vraćamo se na tvoje 4 osnovne kategorije (maknuti problematični ženski parovi)
 CATEGORIES = [
     {
         "name": "LATEST", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without",
+        "count_needed": 1  # Treba nam samo prvi album
     },
     {
         "name": "BEST", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without",
+        "count_needed": 1  # Treba nam samo prvi album
     },
     {
         "name": "MOST COMMENTS", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=comments&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=comments&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without",
+        "count_needed": 1  # Treba nam samo prvi album
     },
     {
         "name": "RANDOM", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=rand&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=rand&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without",
+        "count_needed": 1  # Treba nam samo prvi album
     },
     {
-        "name": "GIRL PAIRS LATEST", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=5&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+        "name": "LATEST NEXT", 
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without",
+        "count_needed": 2  # Idemo dublje, tražimo sljedeći slobodan album
     },
     {
-        "name": "GIRL PAIRS BEST", 
-        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=5&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without"
+        "name": "BEST NEXT", 
+        "url": f"https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&dateMin={date_min}&dateMax={date_max}&price=100-100000&trans=without",
+        "count_needed": 2  # Idemo dublje, tražimo sljedeći slobodan album
     }
 ]
 
 def get_focus_y(w, h):
     ratio = w / h
-    if ratio < 0.8:
-        return 0.30
-    elif ratio < 1.0:
-        return 0.38
-    elif ratio < 1.3:
-        return 0.45
-    else:
-        return 0.50
+    if ratio < 0.8: return 0.30
+    elif ratio < 1.0: return 0.38
+    elif ratio < 1.3: return 0.45
+    else: return 0.50
 
 def get_image_info(scraper, url):
     if not url: return None
@@ -68,7 +70,6 @@ def get_image_info(scraper, url):
         if res.status_code == 200:
             img = Image.open(BytesIO(res.content))
             w, h = img.size
-            
             focus_y = get_focus_y(w, h)
             
             img.thumbnail((600, 600)) 
@@ -89,7 +90,7 @@ def get_image_info(scraper, url):
 def scrape_amateri():
     scraper = cloudscraper.create_scraper()
     news_items = []
-    used_links = set() # Sprečava da se isti album ponovi u više polja
+    used_links = set()  # Globalni skup koji sprječava bilo kakvo dupliranje slika u widgetu
     
     for cat in CATEGORIES:
         print(f"🚀 Obrađujem Amateri albume: {cat['name']}")
@@ -117,12 +118,14 @@ def scrape_amateri():
                         album_items.append((parent_a, img))
 
             success = False
+            found_in_this_category = 0
+            
             for box_link, img in album_items:
                 album_url = box_link.get('href')
                 if album_url.startswith('/'): 
                     album_url = "https://www.amateri.com" + album_url
                 
-                # Ako je album već izvučen u nekoj od prošlih kategorija, preskoči ga
+                # KLJUČNO: Ako je album već iskorišten u nekoj od prethodnih kućica, preskoči ga!
                 if album_url in used_links:
                     continue
                 
@@ -134,7 +137,7 @@ def scrape_amateri():
                 info = get_image_info(scraper, image_url)
                 
                 if info:
-                    used_links.add(album_url) # Označi album kao iskorišten
+                    used_links.add(album_url)
                     
                     news_items.append({
                         "source_title1": cat['name'].upper(),
@@ -145,21 +148,20 @@ def scrape_amateri():
                         "focus_y": info["focus_y"],
                         "link": album_url
                     })
-                    print(f"   ✅ Uspješno uhvaćen album: {album_url}")
+                    print(f"   ✅ Uhvaćen album za [{cat['name']}]: {album_url}")
                     success = True
-                    break 
+                    break  # Našli smo valjan i jedinstven album za ovo polje, prekidaj petlju stranice
             
             if not success:
-                print(f"   ⚠ Nije pronađen valjan album za kategoriju {cat['name']}.")
+                print(f"   ⚠ Nije pronađen slobodan jedinstven album za {cat['name']}.")
             
             time.sleep(2)
         except Exception as e:
             print(f"❌ Greška na {cat['name']}: {e}")
 
-    # Osiguravamo da se datoteka uvijek zapiše kako GitHub Actions ne bi bacio grešku
     with open('amateri_news.json', 'w', encoding='utf-8') as f:
         json.dump(news_items, f, ensure_ascii=False, indent=4)
-    print(f"\n✅ JSON uspješno spremljen! Ukupno stavki: {len(news_items)}")
+    print(f"\n✅ JSON uspješno spremljen! Ukupno jedinstvenih stavki: {len(news_items)}")
 
 if __name__ == "__main__":
     scrape_amateri()
