@@ -6,12 +6,11 @@ from PIL import Image
 from bs4 import BeautifulSoup
 import time
 
-# Standardizirani endpointi prema tvom zahtjevu
 CATEGORIES = [
-    {"name": "LATEST", "url": "https://www.amateri.com/en/albums/?sort=time&category%5B0%5D=2&trans=include"},
-    {"name": "BEST", "url": "https://www.amateri.com/en/albums/?sort=standard&category%5B0%5D=2&trans=include"},
-    {"name": "MOST COMMENTS", "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=comments&category%5B0%5D=2&trans=include"},
-    {"name": "RANDOM", "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&category%5B0%5D=2&sort=rand&trans=include"}
+    {"name": "LATEST", "url": "https://www.amateri.com/en/albums/?sort=time&category%5B0%5D=2&trans=exclude&gender=female"},
+    {"name": "BEST", "url": "https://www.amateri.com/en/albums/?sort=standard&category%5B0%5D=2&trans=exclude&gender=female"},
+    {"name": "MOST COMMENTS", "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=comments&category%5B0%5D=2&trans=exclude&gender=female"},
+    {"name": "RANDOM", "url": "https://www.amateri.com/en/albums/?listingType=thumbListing&category%5B0%5D=2&sort=rand&trans=exclude&gender=female"}
 ]
 
 def get_focus_y(w, h):
