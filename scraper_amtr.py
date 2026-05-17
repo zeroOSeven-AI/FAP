@@ -14,7 +14,7 @@ one_month_ago = today - timedelta(days=30)
 date_max = today.strftime('%Y-%m-%d')
 date_min = one_month_ago.strftime('%Y-%m-%d')
 
-# URL-ovi posloženi točno prema tvom zadnjem primjeru + filter za žene
+# URL-ovi posloženi točno prema tvom zadnjem provjerenom primjeru + filter za žene
 CATEGORIES = [
     {
         "name": "LATEST", 
@@ -91,25 +91,41 @@ def scrape_amateri():
             response = scraper.get(cat['url'], timeout=30, headers=headers)
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Selektori za elemente albuma na stranici
-            items = soup.select('.album-item, .album, .picture-box, .thumb-box')
+            # NOVI PRISTUP: Tražimo direktno sve 'a' linkove koji u hrefu imaju '/album/' i sadrže sliku
+            all_links = soup.find_all('a', href=True)
+            album_items = []
             
-            if not items:
-                items = [a for a in soup.find_all('a', href=True) if '/album/' in a.get('href', '') and a.find('img')]
-            
-            for item in items:
-                img = item.find('img') if hasattr(item, 'find') else None
-                if not img: continue
+            for link in all_links:
+                href = link.get('href', '')
+                # Filtriramo samo stvarne linkove na albume, preskačemo profile i statičke rute
+                if '/album/' in href and not any(x in href for x in ['/albums', 'upload', 'search']):
+                    img = link.find('img')
+                    if img:
+                        album_items.append((link, img))
 
+            # Ako nismo našli unutar linka, probaj naći slike koje imaju 'data-src' a roditelj im je album link
+            if not album_items:
+                for img in soup.find_all('img'):
+                    parent_a = img.find_parent('a', href=True)
+                    if parent_a and '/album/' in parent_a.get('href', ''):
+                        album_items.append((parent_a, img))
+
+            # Idemo kroz pronađene albume i uzimamo prvi ispravan
+            success = False
+            for box_link, img in album_items:
                 raw_url = img.get('data-src') or img.get('data-lazy-src') or img.get('src') or ""
-                if "logo" in raw_url.lower() or not raw_url or "base64" in raw_url: continue
+                
+                # Preskači logo, avatare i ikone
+                if "logo" in raw_url.lower() or "avatar" in raw_url.lower() or not raw_url or "base64" in raw_url: 
+                    continue
                 
                 image_url = raw_url
                 info = get_image_info(scraper, image_url)
                 
                 if info:
-                    link = item.get('href') if item.name == 'a' else (item.find_parent('a').get('href', '#') if item.find_parent('a') else '#')
-                    if link.startswith('/'): link = "https://www.amateri.com" + link
+                    album_url = box_link.get('href')
+                    if album_url.startswith('/'): 
+                        album_url = "https://www.amateri.com" + album_url
                     
                     news_items.append({
                         "source_title1": cat['name'].upper(),
@@ -118,9 +134,14 @@ def scrape_amateri():
                         "w": info["w"],
                         "h": info["h"],
                         "focus_y": info["focus_y"],
-                        "link": link
+                        "link": album_url
                     })
-                    break # Uzmi samo prvu sliku/album iz ove kategorije
+                    print(f"   ✅ Uspješno uhvaćen album: {album_url}")
+                    success = True
+                    break # Uzmi samo prvi (najnoviji) album iz ove kategorije
+            
+            if not success:
+                print(f"   ⚠ Nije pronađen valjan album za kategoriju {cat['name']}.")
             
             time.sleep(2)
         except Exception as e:
@@ -129,9 +150,9 @@ def scrape_amateri():
     if news_items:
         with open('amateri_news.json', 'w', encoding='utf-8') as f:
             json.dump(news_items, f, ensure_ascii=False, indent=4)
-        print(f"✅ JSON uspješno spremljen u amateri_news.json!")
+        print(f"\n✅ JSON uspješno spremljen u amateri_news.json! Ukupno stavki: {len(news_items)}")
     else:
-        print("⚠ Skraper nije uspio pronaći niti jedan album s ovim filterima.")
+        print("\n❌ Skraper nije uspio izvući podatke. Provjeri strukturu ručno.")
 
 if __name__ == "__main__":
     scrape_amateri()
