@@ -62,9 +62,10 @@ def get_image_info(scraper, url):
             w, h = img.size
             focus_y = get_focus_y(w, h)
             
+            # Smanjujemo veliku sliku na optimalnih 600px širine/visine za widget
             img.thumbnail((600, 600)) 
             buffered = BytesIO()
-            img.convert('RGB').save(buffered, format="JPEG", quality=75)
+            img.convert('RGB').save(buffered, format="JPEG", quality=80) # Malo bolja kvaliteta (80)
             img_str = base64.b64encode(buffered.getvalue()).decode()
             
             return {
@@ -80,8 +81,6 @@ def get_image_info(scraper, url):
 def scrape_amateri():
     scraper = cloudscraper.create_scraper()
     news_items = []
-    
-    # 🔥 Skup (set) u koji spremamo ID-eve ili linkove albuma koje smo VEĆ uzeli
     used_album_links = set()
     
     for cat in CATEGORIES:
@@ -93,21 +92,24 @@ def scrape_amateri():
             response = scraper.get(cat['url'], timeout=30, headers=headers)
             soup = BeautifulSoup(response.text, 'html.parser')
             
+            # Mičemo sponzorirane elemente s vrha
+            for featured in soup.select('.featured, .promoted, .premium-top, .sponsored'):
+                featured.decompose()
+            
             all_links = soup.find_all('a', href=True)
             album_items = []
             
             for link in all_links:
                 href = link.get('href', '')
                 if '/album/' in href and not any(x in href for x in ['/albums', 'upload', 'search']):
+                    
+                    parent_classes = "".join(link.replace_with if not hasattr(link, 'parents') else [p.get('class', '') for p in link.parents if p.get('class')])
+                    if any(x in str(parent_classes).lower() for x in ['featured', 'promoted', 'sponsor']):
+                        continue
+                        
                     img = link.find('img')
                     if img:
                         album_items.append((link, img))
-
-            if not album_items:
-                for img in soup.find_all('img'):
-                    parent_a = img.find_parent('a', href=True)
-                    if parent_a and '/album/' in parent_a.get('href', ''):
-                        album_items.append((parent_a, img))
 
             success = False
             for box_link, img in album_items:
@@ -115,7 +117,6 @@ def scrape_amateri():
                 if album_url.startswith('/'): 
                     album_url = "https://www.amateri.com" + album_url
                 
-                # 🔥 POPRAVAK: Ako je ovaj album već iskorišten u nekoj od prošlih kategorija, preskoči ga!
                 if album_url in used_album_links:
                     continue
                 
@@ -123,11 +124,17 @@ def scrape_amateri():
                 if "logo" in raw_url.lower() or "avatar" in raw_url.lower() or not raw_url or "base64" in raw_url: 
                     continue
                 
-                image_url = raw_url
+                # 🔥 KLJUČNI POPRAVAK ZA REZOLUCIJU:
+                # Pretvaramo npr. ".../thumbs/12345_t.jpg" u ".../images/12345.jpg" kako bismo povukli HD sliku
+                image_url = raw_url.replace('/thumbs/', '/images/').replace('_t.', '.')
+                
                 info = get_image_info(scraper, image_url)
                 
+                # Fallback u slučaju da HD zamjena baci 404 grešku (ako amateri negdje nemaju istu strukturu)
+                if not info:
+                    info = get_image_info(scraper, raw_url)
+                
                 if info:
-                    # Dodaj album u set iskorištenih
                     used_album_links.add(album_url)
                     
                     news_items.append({
@@ -139,23 +146,22 @@ def scrape_amateri():
                         "focus_y": info["focus_y"],
                         "link": album_url
                     })
-                    print(f"   ✅ Uspješno uhvaćen jedinstven album: {album_url}")
+                    print(f"   ✅ Uhvaćen album (Rezolucija: {info['w']}x{info['h']}): {album_url}")
                     success = True
-                    break  # Idemo na iduću kategoriju
+                    break
             
             if not success:
-                print(f"   ⚠ Nije pronađen slobodan/novi album za ovu kategoriju.")
+                print(f"   ⚠ Nije pronađen slobodan album za ovu kategoriju.")
             
             time.sleep(2)
             
         except Exception as e:
             print(f"❌ Greška na kategoriji {cat['name']}: {e}")
 
-    # Spremanje u datoteku
     if news_items:
         with open('amateri_news.json', 'w', encoding='utf-8') as f:
             json.dump(news_items, f, ensure_ascii=False, indent=4)
-        print(f"\n✅ SVE GOTOVO! amateri_news.json ima 4 različite slike.")
+        print(f"\n✅ SVE GOTOVO! Spremljene HD slike u amateri_news.json.")
     else:
         print("\n❌ JSON je prazan.")
 
