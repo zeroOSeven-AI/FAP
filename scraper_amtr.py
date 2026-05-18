@@ -6,12 +6,14 @@ from PIL import Image
 from bs4 import BeautifulSoup
 import time
 
-# 100% ČISTI I Službeni URL-ovi s Amatera bez lažnih filtera datuma i cijena
+# URL-ovi: Za NEXT kategorije skačemo odmah na stranicu 2 (&page=2) da dobijemo nove unikatne albume
 URLS = {
     "LATEST": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&trans=without",
     "BEST": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&trans=without",
     "MOST_COMMENTS": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=comments&category%5B0%5D=2&gender%5B0%5D=1&trans=without",
-    "RANDOM": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=rand&category%5B0%5D=2&gender%5B0%5D=1&trans=without"
+    "RANDOM": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=rand&category%5B0%5D=2&gender%5B0%5D=1&trans=without",
+    "LATEST_NEXT": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&trans=without&page=2",
+    "BEST_NEXT": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&trans=without&page=2"
 }
 
 def get_focus_y(w, h):
@@ -71,7 +73,7 @@ def scrape_amateri():
     final_widgets = [None] * 6 
     used_links = set()
     
-    print("⏳ Skupljam prave albume s čistih Amateri kategorija...")
+    print("⏳ Skupljam albume (Stranica 1 i Stranica 2)...")
     latest_list = fetch_albums_from_url(scraper, URLS["LATEST"])
     time.sleep(1)
     best_list = fetch_albums_from_url(scraper, URLS["BEST"])
@@ -79,11 +81,14 @@ def scrape_amateri():
     comments_list = fetch_albums_from_url(scraper, URLS["MOST_COMMENTS"])
     time.sleep(1)
     random_list = fetch_albums_from_url(scraper, URLS["RANDOM"])
+    time.sleep(1)
+    latest_next_list = fetch_albums_from_url(scraper, URLS["LATEST_NEXT"])
+    time.sleep(1)
+    best_next_list = fetch_albums_from_url(scraper, URLS["BEST_NEXT"])
     
     def pop_unique_album(album_list, debug_name):
         for item in album_list:
             if item["link"] not in used_links:
-                print(f"   🔎 Provjeravam sliku za {debug_name}: {item['link']}")
                 info = get_image_info(scraper, item["img_url"])
                 if info:
                     used_links.add(item["link"])
@@ -91,46 +96,38 @@ def scrape_amateri():
                         "image_b64": info["b64"], "w": info["w"], "h": info["h"],
                         "focus_y": info["focus_y"], "link": item["link"]
                     }
-                else:
-                    print(f"   ⚠ Slika ne valja, kopam dalje niz listu...")
         return None
 
-    # Polje 1: LATEST (Prvi najnoviji)
+    # Punjenje 6 polja iz zasebnih lista
     print("📦 Pakiram Polje 1: LATEST")
     res = pop_unique_album(latest_list, "LATEST")
     if res: final_widgets[0] = {**res, "source_title1": "LATEST", "source_title2": "AMATERI"}
     
-    # Polje 2: BEST (Prvi najbolji)
     print("📦 Pakiram Polje 2: BEST")
     res = pop_unique_album(best_list, "BEST")
     if res: final_widgets[1] = {**res, "source_title1": "BEST", "source_title2": "AMATERI"}
     
-    # Polje 3: MOST COMMENTS
     print("📦 Pakiram Polje 3: MOST COMMENTS")
     res = pop_unique_album(comments_list, "MOST COMMENTS")
     if res: final_widgets[2] = {**res, "source_title1": "MOST COMMENTS", "source_title2": "AMATERI"}
     
-    # Polje 4: RANDOM
     print("📦 Pakiram Polje 4: RANDOM")
     res = pop_unique_album(random_list, "RANDOM")
     if res: final_widgets[3] = {**res, "source_title1": "RANDOM", "source_title2": "AMATERI"}
     
-    # Polje 5: LATEST NEXT (Drugi po redu najnoviji slobodan album)
     print("📦 Pakiram Polje 5: LATEST NEXT")
-    res = pop_unique_album(latest_list, "LATEST NEXT")
+    res = pop_unique_album(latest_next_list, "LATEST NEXT")
     if res: final_widgets[4] = {**res, "source_title1": "LATEST NEXT", "source_title2": "AMATERI"}
     
-    # Polje 6: BEST NEXT (Drugi po redu najbolji slobodan album)
     print("📦 Pakiram Polje 6: BEST NEXT")
-    res = pop_unique_album(best_list, "BEST NEXT")
+    res = pop_unique_album(best_next_list, "BEST NEXT")
     if res: final_widgets[5] = {**res, "source_title1": "BEST NEXT", "source_title2": "AMATERI"}
 
-    # Filtriranje ako je nešto otpalo (uvijek će biti 6 jer na ovim URL-ovima ima more albuma)
     news_items = [x for x in final_widgets if x is not None]
 
     with open('amateri_news.json', 'w', encoding='utf-8') as f:
         json.dump(news_items, f, ensure_ascii=False, indent=4)
-    print(f"\n✅ JSON uspješno spremljen! Ukupno stavki u mreži: {len(news_items)}/6")
+    print(f"\n✅ JSON uspješno spremljen! Ukupno stavki: {len(news_items)}/6")
 
 if __name__ == "__main__":
     scrape_amateri()
