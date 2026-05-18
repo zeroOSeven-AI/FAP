@@ -62,7 +62,7 @@ def fetch_albums_from_url(scraper, url):
                     if raw_img and not any(x in raw_img.lower() for x in ["logo", "default-avatar"]):
                         album_items.append({"link": album_url, "img_url": raw_img})
         return album_items
-    exceptException as e:
+    except Exception as e:  # POPRAVLJENO: Razmaknut 'except' i 'Exception'
         print(f"Greška pri dohvaćanju URL-a: {e}")
         return []
 
