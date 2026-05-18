@@ -6,7 +6,7 @@ from PIL import Image
 from bs4 import BeautifulSoup
 import time
 
-# URL-ovi za različite kategorije kako bismo osigurali more unikatnih slika
+# URL-ovi za 4 glavne kategorije
 URLS = {
     "LATEST": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&trans=without",
     "BEST": "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=standard&category%5B0%5D=2&gender%5B0%5D=1&trans=without",
@@ -62,7 +62,7 @@ def fetch_albums_from_url(scraper, url):
                     if raw_img and not any(x in raw_img.lower() for x in ["logo", "default-avatar"]):
                         album_items.append({"link": album_url, "img_url": raw_img})
         return album_items
-    except Exception as e:  # POPRAVLJENO: Razmaknut 'except' i 'Exception'
+    except Exception as e:
         print(f"Greška pri dohvaćanju URL-a: {e}")
         return []
 
@@ -71,7 +71,7 @@ def scrape_amateri():
     final_widgets = [None] * 6 
     used_links = set()
     
-    print("⏳ Skupljam albume iz svih kategorija...")
+    print("⏳ Skupljam sve dostupne albume sa stranica...")
     latest_list = fetch_albums_from_url(scraper, URLS["LATEST"])
     time.sleep(1)
     best_list = fetch_albums_from_url(scraper, URLS["BEST"])
@@ -80,9 +80,11 @@ def scrape_amateri():
     time.sleep(1)
     random_list = fetch_albums_from_url(scraper, URLS["RANDOM"])
     
-    def pop_unique_album(album_list):
+    # POPRAVLJENA FUNKCIJA: Prolazi kroz cijelu listu dok god ne nađe slobodan album, ne odustaje na prvom duplikatu!
+    def pop_unique_album(album_list, debug_name):
         for item in album_list:
             if item["link"] not in used_links:
+                print(f"   🔎 [{debug_name}] Pokušavam uzeti: {item['link']}")
                 info = get_image_info(scraper, item["img_url"])
                 if info:
                     used_links.add(item["link"])
@@ -90,39 +92,37 @@ def scrape_amateri():
                         "image_b64": info["b64"], "w": info["w"], "h": info["h"],
                         "focus_y": info["focus_y"], "link": item["link"]
                     }
+                else:
+                    print(f"   ⚠ Slika ne radi za {item['link']}, tražim sljedeći...")
+            else:
+                print(f"   ⏭ Preskačem duplikat za [{debug_name}]: {item['link']}")
         return None
 
     # Polje 1: LATEST 1
-    print("📦 Pakiram Polje 1: LATEST 1")
-    res = pop_unique_album(latest_list)
+    res = pop_unique_album(latest_list, "LATEST 1")
     if res: final_widgets[0] = {**res, "source_title1": "LATEST 1", "source_title2": "AMATERI"}
     
-    # Polje 2: LATEST 2
-    print("📦 Pakiram Polje 2: LATEST 2")
-    res = pop_unique_album(latest_list)
+    # Polje 2: LATEST 2 (uzima idući najnoviji)
+    res = pop_unique_album(latest_list, "LATEST 2")
     if res: final_widgets[1] = {**res, "source_title1": "LATEST 2", "source_title2": "AMATERI"}
     
-    # Polje 3: LATEST 3
-    print("📦 Pakiram Polje 3: LATEST 3")
-    res = pop_unique_album(latest_list)
+    # Polje 3: LATEST 3 (uzima treći najnoviji)
+    res = pop_unique_album(latest_list, "LATEST 3")
     if res: final_widgets[2] = {**res, "source_title1": "LATEST 3", "source_title2": "AMATERI"}
     
     # Polje 4: BEST
-    print("📦 Pakiram Polje 4: BEST")
-    res = pop_unique_album(best_list)
+    res = pop_unique_album(best_list, "BEST")
     if res: final_widgets[3] = {**res, "source_title1": "BEST", "source_title2": "AMATERI"}
     
-    # Polje 5: MOST COMMENTS
-    print("📦 Pakiram Polje 5: MOST COMMENTS")
-    res = pop_unique_album(comments_list)
+    # Polje 5: MOST COMMENTS (ako je prvi isti kao u BEST, petlja sada ide dalje i uzima idući s najviše komentara)
+    res = pop_unique_album(comments_list, "MOST COMMENTS")
     if res: final_widgets[4] = {**res, "source_title1": "MOST COMMENTS", "source_title2": "AMATERI"}
     
     # Polje 6: RANDOM
-    print("📦 Pakiram Polje 6: RANDOM")
-    res = pop_unique_album(random_list)
+    res = pop_unique_album(random_list, "RANDOM")
     if res: final_widgets[5] = {**res, "source_title1": "RANDOM", "source_title2": "AMATERI"}
 
-    # Čišćenje i spremanje
+    # Spremanje isključivo popunjenih widgeta
     news_items = [x for x in final_widgets if x is not None]
 
     with open('amateri_news.json', 'w', encoding='utf-8') as f:
