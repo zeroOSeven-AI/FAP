@@ -6,7 +6,6 @@ from PIL import Image
 from bs4 import BeautifulSoup
 import time
 
-# Najpouzdaniji URL - Najnoviji albumi (LATEST)
 URL_LATEST = "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&trans=without"
 
 def get_focus_y(w, h):
@@ -45,13 +44,14 @@ def scrape_amateri():
     news_items = []
     used_links = set()
     
-    print("⏳ Dohvaćam najnovije albume s Amatera...")
+    print("⏳ Pokrećem duboko skeniranje najnovijih albuma...")
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
         response = scraper.get(URL_LATEST, timeout=30, headers=headers)
         soup = BeautifulSoup(response.text, 'html.parser')
         
         album_items = []
+        # Hvatanje svih mogućih albuma na stranici
         for link in soup.find_all('a', href=True):
             href = link.get('href', '')
             if '/album/' in href and not any(x in href for x in ['/albums', 'upload', 'search']):
@@ -62,11 +62,13 @@ def scrape_amateri():
                     if raw_img and not any(x in raw_img.lower() for x in ["logo", "default-avatar"]):
                         album_items.append({"link": album_url, "img_url": raw_img})
         
-        print(f"   Pronađeno ukupno {len(album_items)} albuma na stranici. Skupljam točno 6 komada...")
+        print(f"   Pronađeno je ukupno {len(album_items)} albuma na stranici. Krećem u punjenje mreže...")
         
+        # IDEMO KROZ SVE PRONAĐENE ALBUME DOK NE SAKUPIMO TOČNO 6 KOMADA
         for item in album_items:
-            # Ispravljena kočnica: Čim dođemo do 6, odmah prekini daljnju obradu
+            # Ako smo uspješno sakupili 6 komada, tek tada prekidamo petlju!
             if len(news_items) == 6:
+                print("   🎯 Uspješno sakupljeno svih 6 unikatnih albuma!")
                 break
                 
             if item["link"] not in used_links:
@@ -85,17 +87,21 @@ def scrape_amateri():
                         "focus_y": info["focus_y"],
                         "link": item["link"]
                     })
-                    print(f"   ✅ Spremljeno u polje {len(news_items)}: {item['link']}")
+                    print(f"   ✅ Polje {len(news_items)} uspješno dodano: {item['link']}")
                 else:
-                    print("   ⚠ Slika ne valja, preskačem...")
+                    # Ako slika ne valja, skripta ne odustaje nego samo ispiše ovo i ide na idući album s liste
+                    print(f"   ⚠ Slika za album {item['link']} nije prošla. Preskačem i tražim dalje...")
                     
     except Exception as e:
-        print(f"❌ Greška na stranici: {e}")
+        print(f"❌ Teška greška pri skeniranju: {e}")
 
-    # POPRAVAK: Spremamo direktno našu čistu listu bez ikakvih prebrisavanja stare skripte
+    # Provjera za kraj - ako je nakon svega ostalo manje od 6 (teoretski nemoguće jer ima albuma)
+    if len(news_items) < 6:
+        print(f"   ⚠ Upozorenje: Nađeno je samo {len(news_items)} albuma.")
+
     with open('amateri_news.json', 'w', encoding='utf-8') as f:
         json.dump(news_items, f, ensure_ascii=False, indent=4)
-    print(f"\n✅ JSON uspješno spremljen! Ukupno stavki: {len(news_items)}/6")
+    print(f"\n✅ JSON spremljen. Ukupno stavki: {len(news_items)}/6")
 
 if __name__ == "__main__":
     scrape_amateri()
