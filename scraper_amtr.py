@@ -6,7 +6,7 @@ from PIL import Image
 from bs4 import BeautifulSoup
 import time
 
-# Samo jedan, najpouzdaniji URL - Najnoviji albumi (LATEST)
+# Najpouzdaniji URL - Najnoviji albumi (LATEST)
 URL_LATEST = "https://www.amateri.com/en/albums/?listingType=thumbListing&sort=time&category%5B0%5D=2&gender%5B0%5D=1&trans=without"
 
 def get_focus_y(w, h):
@@ -62,20 +62,18 @@ def scrape_amateri():
                     if raw_img and not any(x in raw_img.lower() for x in ["logo", "default-avatar"]):
                         album_items.append({"link": album_url, "img_url": raw_img})
         
-        print(f"   Proneđeno ukupno {len(album_items)} albuma na stranici. Uzimam prvih 6 ispravnih...")
+        print(f"   Pronađeno ukupno {len(album_items)} albuma na stranici. Skupljam točno 6 komada...")
         
-        # Prolazimo kroz sakupljene albume redom i punimo točno 6 mjesta
         for item in album_items:
-            if len(news_items) >= 6:
-                break  # Imamo punu mrežu, stani ovdje
+            # Ispravljena kočnica: Čim dođemo do 6, odmah prekini daljnju obradu
+            if len(news_items) == 6:
+                break
                 
             if item["link"] not in used_links:
-                print(f"   🔎 Obrada albuma {len(news_items) + 1}/6: {item['link']}")
                 info = get_image_info(scraper, item["img_url"])
                 
                 if info:
                     used_links.add(item["link"])
-                    # Tag će dinamički ispisivati LATEST 1, LATEST 2, LATEST 3...
                     tag_name = f"LATEST {len(news_items) + 1}"
                     
                     news_items.append({
@@ -87,14 +85,14 @@ def scrape_amateri():
                         "focus_y": info["focus_y"],
                         "link": item["link"]
                     })
-                    print(f"   ✅ Spremljeno u polje {len(news_items)}")
+                    print(f"   ✅ Spremljeno u polje {len(news_items)}: {item['link']}")
                 else:
-                    print("   ⚠ Slika ne valja, idem na idući album...")
+                    print("   ⚠ Slika ne valja, preskačem...")
                     
     except Exception as e:
         print(f"❌ Greška na stranici: {e}")
 
-    # Zapisivanje u JSON datoteku
+    # POPRAVAK: Spremamo direktno našu čistu listu bez ikakvih prebrisavanja stare skripte
     with open('amateri_news.json', 'w', encoding='utf-8') as f:
         json.dump(news_items, f, ensure_ascii=False, indent=4)
     print(f"\n✅ JSON uspješno spremljen! Ukupno stavki: {len(news_items)}/6")
