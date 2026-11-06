@@ -22,7 +22,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install beautifulsoup4 Pillow requests curl_cffi
+          pip install beautifulsoup4 Pillow requests playwright
+          playwright install chromium --with-deps
 
       - name: Run Amateri Scraper
         run: python scraper_amtr.py
