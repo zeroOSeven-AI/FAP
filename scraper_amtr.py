@@ -79,11 +79,11 @@ def scrape_amateri():
     
     print("⏳ Skupljam sve dostupne albume sa stranica...")
     latest_list = fetch_albums_from_url(URLS["LATEST"])
-    time.sleep(2)
+    time.sleep(4)
     best_list = fetch_albums_from_url(URLS["BEST"])
-    time.sleep(2)
+    time.sleep(4)
     comments_list = fetch_albums_from_url(URLS["MOST_COMMENTS"])
-    time.sleep(2)
+    time.sleep(4)
     random_list = fetch_albums_from_url(URLS["RANDOM"])
     
     def pop_unique_album(album_list, debug_name):
